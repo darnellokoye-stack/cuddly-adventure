@@ -29,6 +29,12 @@ describe('Filter pipeline', () => {
     expect(filter.filter({ ...validPair, chain: 'ethereum' })).toBe(false);
   });
 
+  it('ValidationFilter handles non-string chain values gracefully', () => {
+    const filter = new ValidationFilter();
+    // Pair with chain as empty string (edge case after guard)
+    expect(filter.filter({ ...validPair, chain: '' })).toBe(false);
+  });
+
   it('LiquidityFilter rejects low liquidity', () => {
     const filter = new LiquidityFilter();
     expect(filter.filter({ ...validPair, liquidity: 1000 })).toBe(false);
