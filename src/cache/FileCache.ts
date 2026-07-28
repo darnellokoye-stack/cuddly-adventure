@@ -15,13 +15,17 @@ export class FileCache implements CacheProvider {
   constructor(private readonly root = dataDirectory) {}
 
   async read<T>(key: string): Promise<T | null> {
+    const payload = await this.readPayload<T>(key);
+    return payload?.data ?? null;
+  }
+
+  async readPayload<T>(key: string): Promise<CachePayload<T> | null> {
     const filePath = this.resolvePath(key);
     try {
       const raw = await fs.readFile(filePath, 'utf-8');
-      const payload = JSON.parse(raw) as CachePayload<T>;
-      return payload.data;
+      return JSON.parse(raw) as CachePayload<T>;
     } catch (error) {
-      logger.debug({ filePath, error }, 'Cache read failed, returning null');
+      logger.debug({ filePath, error }, 'Cache payload read failed, returning null');
       return null;
     }
   }

@@ -19,6 +19,9 @@ import { ProviderRegistry } from '../api/providers/ProviderRegistry.js';
 import { ProviderManager } from '../api/ProviderManager.js';
 import { DexScreenerProvider } from '../api/providers/DexScreenerProvider.js';
 import { ProviderMerger } from './ProviderMerger.js';
+import { DiscoveryEventBus } from '../events/DiscoveryEventBus.js';
+import { DiscoveryMetrics } from '../types/Metrics.js';
+import { DiscoveryEventType } from '../types/Events.js';
 
 export interface DiscoveryPayload {
   tokens: Token[];
@@ -41,6 +44,24 @@ export class DiscoveryEngine {
   ];
   private readonly rankingEngine = new RankingEngine();
   private readonly tokenAggregator = new TokenAggregator();
+  
+  // Phase 2: Detection and metrics
+  private readonly eventBus = DiscoveryEventBus.getInstance();
+  private lastRefreshAt?: string;
+  private lastRunDurationMs = 0;
+  private previousPairs: Map<string, Pair> = new Map();
+  private previousTokens: Map<string, Token> = new Map();
+  private eventCounts: Record<DiscoveryEventType, number> = {
+    [DiscoveryEventType.NEW_PAIR]: 0,
+    [DiscoveryEventType.NEW_TOKEN]: 0,
+    [DiscoveryEventType.LIQUIDITY_SPIKE]: 0,
+    [DiscoveryEventType.LIQUIDITY_DROP]: 0,
+    [DiscoveryEventType.VOLUME_SPIKE]: 0,
+    [DiscoveryEventType.HOLDER_GROWTH]: 0,
+    [DiscoveryEventType.SCORE_CHANGED]: 0,
+    [DiscoveryEventType.SECURITY_WARNING]: 0,
+    [DiscoveryEventType.PROVIDER_FAILURE]: 0
+  };
 
   constructor() {
     this.providerRegistry = new ProviderRegistry();
@@ -49,6 +70,7 @@ export class DiscoveryEngine {
   }
 
   async refresh(): Promise<DiscoveryPayload> {
+    const refreshStartTime = Date.now();
     logger.info('Discovery refresh started');
 
     const { pairs: mergedPairs } = await this.fetchPrimaryPairs();
@@ -95,12 +117,23 @@ export class DiscoveryEngine {
     const uniqueTokens = deduplicateTokens(tokens);
     const stats = this.generateStats(uniquePairs, uniqueTokens);
 
+    // Phase 2: Emit detection and change events
+    this.emitPairChanges(uniquePairs);
+    this.emitTokenChanges(uniqueTokens);
+
+    // Update snapshots for next comparison
+    this.previousPairs = new Map(uniquePairs.map((p) => [p.pairAddress, p]));
+    this.previousTokens = new Map(uniqueTokens.map((t) => [t.address, t]));
+
     await this.cacheManager.savePairs(uniquePairs);
     await this.cacheManager.saveTokens(uniqueTokens);
     await this.cacheManager.saveStats(stats);
     await this.cacheManager.saveLastUpdate(nowIso());
 
-    logger.info({ discovered: uniquePairs.length, tokens: uniqueTokens.length }, 'Discovery refresh completed');
+    this.lastRefreshAt = nowIso();
+    this.lastRunDurationMs = Date.now() - refreshStartTime;
+
+    logger.info({ discovered: uniquePairs.length, tokens: uniqueTokens.length, durationMs: this.lastRunDurationMs }, 'Discovery refresh completed');
     return { pairs: uniquePairs, tokens: uniqueTokens, stats };
   }
 
@@ -158,5 +191,137 @@ export class DiscoveryEngine {
       minVolume: config.minVolume,
       lastRefreshed: nowIso()
     };
+  }
+
+  async getMetrics(): Promise<DiscoveryMetrics> {
+    const cached = await this.fetchCached();
+    const cacheAgeMs = await this.cacheManager.getCacheAgeMs('pairs');
+
+    return {
+      lastRefreshAt: this.lastRefreshAt,
+      lastRunDurationMs: this.lastRunDurationMs,
+      cacheAgeMs,
+      discoveredPairs: cached?.pairs.length ?? 0,
+      discoveredTokens: cached?.tokens.length ?? 0,
+      providerStats: this.providerManager.getAllStats(),
+      eventCounts: this.eventCounts
+    };
+  }
+
+  private emitPairChanges(pairs: Pair[]): void {
+    for (const pair of pairs) {
+      const key = pair.pairAddress.toLowerCase();
+      const previous = this.previousPairs.get(key);
+
+      if (!previous) {
+        // New pair detected
+        this.eventBus.emit({
+          type: DiscoveryEventType.NEW_PAIR,
+          timestamp: nowIso(),
+          data: {
+            pair,
+            sources: []
+          }
+        });
+        this.eventCounts[DiscoveryEventType.NEW_PAIR]++;
+      } else {
+        // Compare metrics for changes
+        const liquidityChange = ((pair.liquidity - previous.liquidity) / (previous.liquidity || 1)) * 100;
+        const volumeChange = ((pair.volume24h - previous.volume24h) / (previous.volume24h || 1)) * 100;
+
+        if (Math.abs(liquidityChange) > 25) {
+          // 25% change threshold
+          if (liquidityChange > 0) {
+            this.eventBus.emit({
+              type: DiscoveryEventType.LIQUIDITY_SPIKE,
+              timestamp: nowIso(),
+              data: {
+                pairAddress: pair.pairAddress,
+                previousLiquidity: previous.liquidity,
+                currentLiquidity: pair.liquidity,
+                percentChange: liquidityChange
+              }
+            });
+            this.eventCounts[DiscoveryEventType.LIQUIDITY_SPIKE]++;
+          } else {
+            this.eventBus.emit({
+              type: DiscoveryEventType.LIQUIDITY_DROP,
+              timestamp: nowIso(),
+              data: {
+                pairAddress: pair.pairAddress,
+                previousLiquidity: previous.liquidity,
+                currentLiquidity: pair.liquidity,
+                percentChange: liquidityChange
+              }
+            });
+            this.eventCounts[DiscoveryEventType.LIQUIDITY_DROP]++;
+          }
+        }
+
+        if (volumeChange > 50) {
+          // 50% up threshold
+          this.eventBus.emit({
+            type: DiscoveryEventType.VOLUME_SPIKE,
+            timestamp: nowIso(),
+            data: {
+              pairAddress: pair.pairAddress,
+              volume: pair.volume24h,
+              percentChange: volumeChange
+            }
+          });
+          this.eventCounts[DiscoveryEventType.VOLUME_SPIKE]++;
+        }
+
+        if (pair.score !== previous.score && pair.score > previous.score) {
+          this.eventBus.emit({
+            type: DiscoveryEventType.SCORE_CHANGED,
+            timestamp: nowIso(),
+            data: {
+              pairAddress: pair.pairAddress,
+              previousScore: previous.score,
+              currentScore: pair.score,
+              reason: 'Ranking updated'
+            }
+          });
+          this.eventCounts[DiscoveryEventType.SCORE_CHANGED]++;
+        }
+      }
+    }
+  }
+
+  private emitTokenChanges(tokens: Token[]): void {
+    for (const token of tokens) {
+      const key = token.address.toLowerCase();
+      const previous = this.previousTokens.get(key);
+
+      if (!previous) {
+        // New token detected
+        this.eventBus.emit({
+          type: DiscoveryEventType.NEW_TOKEN,
+          timestamp: nowIso(),
+          data: {
+            token,
+            pairCount: 1
+          }
+        });
+        this.eventCounts[DiscoveryEventType.NEW_TOKEN]++;
+      } else if (token.holderCount && previous.holderCount) {
+        const holderChange = ((token.holderCount - previous.holderCount) / (previous.holderCount || 1)) * 100;
+        if (holderChange > 50) {
+          // 50% growth threshold
+          this.eventBus.emit({
+            type: DiscoveryEventType.HOLDER_GROWTH,
+            timestamp: nowIso(),
+            data: {
+              tokenAddress: token.address,
+              previousHolders: previous.holderCount,
+              currentHolders: token.holderCount,
+              percentChange: holderChange
+            }
+          });
+          this.eventCounts[DiscoveryEventType.HOLDER_GROWTH]++;
+        }
+      }
+    }
   }
 }

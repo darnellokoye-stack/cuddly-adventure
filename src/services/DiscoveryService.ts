@@ -1,5 +1,6 @@
 import { DiscoveryEngine, DiscoveryPayload } from '../discovery/DiscoveryEngine.js';
 import { logger } from '../utils/logger.js';
+import { DiscoveryMetrics } from '../types/Metrics.js';
 
 /**
  * Service responsible for discovery orchestration and cached fallback.
@@ -47,6 +48,10 @@ export class DiscoveryService {
       throw new Error('Cached stats unavailable');
     }
     return cached.stats;
+  }
+
+  async getMetrics(): Promise<DiscoveryMetrics> {
+    return this.engine.getMetrics();
   }
 
   async getToken(address: string) {
