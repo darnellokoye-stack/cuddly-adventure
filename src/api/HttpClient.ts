@@ -28,7 +28,7 @@ export class HttpClient {
     headers?: Record<string, string>
   ): Promise<T> {
     return withRetry(async () => {
-      logger.debug({ url, params }, 'HTTP GET request');
+      logger.trace({ url, params }, 'HTTP GET request');
       const response = await this.client.get<T>(url, { params, headers });
       return response.data;
     });
