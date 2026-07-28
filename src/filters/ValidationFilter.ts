@@ -27,7 +27,9 @@ export class ValidationFilter implements PairFilter {
       return false;
     }
 
-    if (pair.chain.toLowerCase() !== BASE_CHAIN) {
+    // defend against missing/invalid chain values to avoid runtime errors
+    const chainValue = typeof pair.chain === 'string' ? pair.chain.toLowerCase() : '';
+    if (chainValue !== BASE_CHAIN) {
       return false;
     }
 
