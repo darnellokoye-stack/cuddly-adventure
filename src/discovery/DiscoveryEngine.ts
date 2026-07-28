@@ -18,7 +18,7 @@ import { config } from '../config/config.js';
 import { ProviderRegistry } from '../api/providers/ProviderRegistry.js';
 import { ProviderManager } from '../api/ProviderManager.js';
 import { DexScreenerProvider } from '../api/providers/DexScreenerProvider.js';
-import { ProviderMerger, MergedPair } from './ProviderMerger.js';
+import { ProviderMerger } from './ProviderMerger.js';
 
 export interface DiscoveryPayload {
   tokens: Token[];
@@ -51,23 +51,40 @@ export class DiscoveryEngine {
   async refresh(): Promise<DiscoveryPayload> {
     logger.info('Discovery refresh started');
 
-    const rawPairsResp = await this.fetchPrimaryPairs();
-    const mergedPairs = rawPairsResp.pairs as MergedPair[];
-
+    const { pairs: mergedPairs } = await this.fetchPrimaryPairs();
     const registry = new DexStrategyRegistry();
 
     const transformedPairs: Pair[] = mergedPairs.map((mp) => ({
+      // Core identification
       pairAddress: mp.pairAddress,
       dex: registry.recognize(mp.dexId),
       baseToken: mp.baseToken.address,
       quoteToken: mp.quoteToken.address,
       chain: mp.chainId ?? 'base',
+
+      // Liquidity and volume metrics
       liquidity: mp.liquidityUsd ?? mp.liquidity,
       volume24h: mp.volumeUsd,
       priceUsd: mp.priceUsd,
       txns24h: mp.txns24h,
+
+      // Scoring and tracking
       score: 0,
-      lastUpdated: mp.pairCreatedAt ?? nowIso()
+      lastUpdated: mp.pairCreatedAt ?? nowIso(),
+
+      // Phase 2: Protocol and exchange details
+      router: mp.router,
+      factory: mp.factory,
+      poolAddress: mp.poolAddress,
+      reserve0: mp.reserve0,
+      reserve1: mp.reserve1,
+      feeTier: mp.feeTier,
+      protocol: mp.protocol ?? 'dex',
+      liquiditySource: mp.liquiditySource,
+      createdAtBlock: mp.createdAtBlock,
+
+      // Phase 2: Discovery and change tracking
+      discoveredAt: mp.pairCreatedAt ?? nowIso()
     }));
 
     const filteredPairs = transformedPairs.filter((pair) => this.filters.every((filter) => filter.filter(pair)));
@@ -105,7 +122,7 @@ export class DiscoveryEngine {
     };
   }
 
-  private async fetchPrimaryPairs(): Promise<{ pairs: any[] }> {
+  private async fetchPrimaryPairs(): Promise<{ pairs: ReturnType<typeof ProviderMerger.merge> }> {
     try {
       const responses = await this.providerManager.fetchPairsFromAll();
       const merged = ProviderMerger.merge(responses);
