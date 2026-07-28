@@ -1,8 +1,5 @@
-import { DexScreenerResponse } from '../types/ApiResponses.js';
 import { CoinGeckoClient } from '../api/CoinGeckoClient.js';
-import { DiscoveryProvider } from '../api/DiscoveryProvider.js';
-import { DexScreenerClient } from '../api/DexScreenerClient.js';
-import { PairDiscovery } from './PairDiscovery.js';
+import { DexStrategyRegistry } from './DexStrategyRegistry.js';
 import { TokenAggregator } from './TokenAggregator.js';
 import { LiquidityFilter } from '../filters/LiquidityFilter.js';
 import { ScamFilter } from '../filters/ScamFilter.js';
@@ -18,6 +15,11 @@ import { deduplicatePairs, deduplicateTokens } from '../utils/deduplicate.js';
 import { mapWithConcurrency } from '../utils/concurrency.js';
 import { config } from '../config/config.js';
 
+import { ProviderRegistry } from '../api/providers/ProviderRegistry.js';
+import { ProviderManager } from '../api/ProviderManager.js';
+import { DexScreenerProvider } from '../api/providers/DexScreenerProvider.js';
+import { ProviderMerger, MergedPair } from './ProviderMerger.js';
+
 export interface DiscoveryPayload {
   tokens: Token[];
   pairs: Pair[];
@@ -28,7 +30,8 @@ export interface DiscoveryPayload {
  * Orchestrates Base token and pair discovery.
  */
 export class DiscoveryEngine {
-  private readonly dexClient: DiscoveryProvider;
+  private providerRegistry: ProviderRegistry;
+  private providerManager: ProviderManager;
   private readonly geckoClient = new CoinGeckoClient();
   private readonly cacheManager = new CacheManager(new FileCache());
   private readonly filters = [
@@ -39,15 +42,34 @@ export class DiscoveryEngine {
   private readonly rankingEngine = new RankingEngine();
   private readonly tokenAggregator = new TokenAggregator();
 
-  constructor(discoveryProvider: DiscoveryProvider = new DexScreenerClient()) {
-    this.dexClient = discoveryProvider;
+  constructor() {
+    this.providerRegistry = new ProviderRegistry();
+    this.providerRegistry.register(new DexScreenerProvider());
+    this.providerManager = new ProviderManager(this.providerRegistry);
   }
 
   async refresh(): Promise<DiscoveryPayload> {
     logger.info('Discovery refresh started');
 
-    const rawPairs = await this.fetchPrimaryPairs();
-    const transformedPairs = rawPairs.pairs.map(PairDiscovery.transform);
+    const rawPairsResp = await this.fetchPrimaryPairs();
+    const mergedPairs = rawPairsResp.pairs as MergedPair[];
+
+    const registry = new DexStrategyRegistry();
+
+    const transformedPairs: Pair[] = mergedPairs.map((mp) => ({
+      pairAddress: mp.pairAddress,
+      dex: registry.recognize(mp.dexId),
+      baseToken: mp.baseToken.address,
+      quoteToken: mp.quoteToken.address,
+      chain: mp.chainId ?? 'base',
+      liquidity: mp.liquidityUsd ?? mp.liquidity,
+      volume24h: mp.volumeUsd,
+      priceUsd: mp.priceUsd,
+      txns24h: mp.txns24h,
+      score: 0,
+      lastUpdated: mp.pairCreatedAt ?? nowIso()
+    }));
+
     const filteredPairs = transformedPairs.filter((pair) => this.filters.every((filter) => filter.filter(pair)));
     const enrichedPairs = await this.enrichPairs(filteredPairs);
     const rankedPairs = this.rankingEngine.rankPairs(enrichedPairs);
@@ -83,12 +105,14 @@ export class DiscoveryEngine {
     };
   }
 
-  private async fetchPrimaryPairs(): Promise<DexScreenerResponse> {
+  private async fetchPrimaryPairs(): Promise<{ pairs: any[] }> {
     try {
-      return await this.dexClient.fetchPairs();
+      const responses = await this.providerManager.fetchPairsFromAll();
+      const merged = ProviderMerger.merge(responses);
+      return { pairs: merged };
     } catch (error) {
-      logger.warn({ error }, 'DexScreener fetch failed');
-      throw new Error('Primary discovery source unavailable');
+      logger.warn({ error }, 'ProviderManager failed to fetch pairs');
+      throw new Error('Primary discovery sources unavailable');
     }
   }
 
