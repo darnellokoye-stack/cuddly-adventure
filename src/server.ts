@@ -3,6 +3,7 @@ import tokensRouter from './routes/tokens.js';
 import pairsRouter from './routes/pairs.js';
 import statsRouter from './routes/stats.js';
 import refreshRouter from './routes/refresh.js';
+import metricsRouter from './routes/metrics.js';
 import { config } from './config/config.js';
 import { logger } from './utils/logger.js';
 import { DiscoveryEngine } from './discovery/DiscoveryEngine.js';
@@ -16,6 +17,7 @@ export function createApp(): Application {
   app.use('/pairs', pairsRouter);
   app.use('/stats', statsRouter);
   app.use('/refresh', refreshRouter);
+  app.use('/metrics', metricsRouter);
 
   app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
     logger.error({ err, path: req.path }, 'Unhandled request error');
