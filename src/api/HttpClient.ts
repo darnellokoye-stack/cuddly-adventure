@@ -22,10 +22,14 @@ export class HttpClient {
     });
   }
 
-  async get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
+  async get<T>(
+    url: string,
+    params?: Record<string, unknown>,
+    headers?: Record<string, string>
+  ): Promise<T> {
     return withRetry(async () => {
-      logger.info({ url, params }, 'HTTP GET request');
-      const response = await this.client.get<T>(url, { params });
+      logger.debug({ url, params }, 'HTTP GET request');
+      const response = await this.client.get<T>(url, { params, headers });
       return response.data;
     });
   }

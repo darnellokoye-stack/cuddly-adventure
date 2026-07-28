@@ -9,6 +9,7 @@ const validPair: Pair = {
   dex: 'Uniswap V3',
   baseToken: '0x2222222222222222222222222222222222222222',
   quoteToken: '0x3333333333333333333333333333333333333333',
+  chain: 'base',
   liquidity: 10000,
   volume24h: 2000,
   priceUsd: 1,
@@ -21,6 +22,11 @@ describe('Filter pipeline', () => {
   it('ValidationFilter accepts valid pairs', () => {
     const filter = new ValidationFilter();
     expect(filter.filter(validPair)).toBe(true);
+  });
+
+  it('ValidationFilter rejects non-base chains', () => {
+    const filter = new ValidationFilter();
+    expect(filter.filter({ ...validPair, chain: 'ethereum' })).toBe(false);
   });
 
   it('LiquidityFilter rejects low liquidity', () => {

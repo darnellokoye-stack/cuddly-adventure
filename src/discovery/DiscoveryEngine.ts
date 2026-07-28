@@ -15,6 +15,7 @@ import { Pair } from '../types/Pair.js';
 import { logger } from '../utils/logger.js';
 import { nowIso } from '../utils/dates.js';
 import { deduplicatePairs, deduplicateTokens } from '../utils/deduplicate.js';
+import { mapWithConcurrency } from '../utils/concurrency.js';
 import { config } from '../config/config.js';
 
 export interface DiscoveryPayload {
@@ -46,21 +47,22 @@ export class DiscoveryEngine {
     logger.info('Discovery refresh started');
 
     const rawPairs = await this.fetchPrimaryPairs();
-    const transformedPairs = await this.enrichPairs(rawPairs.pairs);
-    const deduplicated = deduplicatePairs(transformedPairs);
-    const filtered = deduplicated.filter((pair) => this.filters.every((filter) => filter.filter(pair)));
-    const ranked = this.rankingEngine.rankPairs(filtered);
-    const tokens = this.tokenAggregator.aggregate(ranked);
+    const transformedPairs = rawPairs.pairs.map(PairDiscovery.transform);
+    const filteredPairs = transformedPairs.filter((pair) => this.filters.every((filter) => filter.filter(pair)));
+    const enrichedPairs = await this.enrichPairs(filteredPairs);
+    const rankedPairs = this.rankingEngine.rankPairs(enrichedPairs);
+    const uniquePairs = deduplicatePairs(rankedPairs);
+    const tokens = this.tokenAggregator.aggregate(uniquePairs);
     const uniqueTokens = deduplicateTokens(tokens);
-    const stats = this.generateStats(ranked, uniqueTokens);
+    const stats = this.generateStats(uniquePairs, uniqueTokens);
 
-    await this.cacheManager.savePairs(ranked);
+    await this.cacheManager.savePairs(uniquePairs);
     await this.cacheManager.saveTokens(uniqueTokens);
     await this.cacheManager.saveStats(stats);
     await this.cacheManager.saveLastUpdate(nowIso());
 
-    logger.info({ discovered: ranked.length, tokens: uniqueTokens.length }, 'Discovery refresh completed');
-    return { pairs: ranked, tokens: uniqueTokens, stats };
+    logger.info({ discovered: uniquePairs.length, tokens: uniqueTokens.length }, 'Discovery refresh completed');
+    return { pairs: uniquePairs, tokens: uniqueTokens, stats };
   }
 
   async fetchCached(): Promise<DiscoveryPayload | null> {
@@ -90,9 +92,8 @@ export class DiscoveryEngine {
     }
   }
 
-  private async enrichPairs(pairs: DexScreenerResponse['pairs']): Promise<Pair[]> {
-    const transformed = pairs.map(PairDiscovery.transform);
-    return Promise.all(transformed.map((pair) => this.enrichPair(pair)));
+  private async enrichPairs(pairs: Pair[]): Promise<Pair[]> {
+    return mapWithConcurrency(pairs, 8, (pair) => this.enrichPair(pair));
   }
 
   private async enrichPair(pair: Pair): Promise<Pair> {
@@ -102,7 +103,8 @@ export class DiscoveryEngine {
         pair.priceUsd = tokenMetadata.priceUsd;
       }
       return pair;
-    } catch {
+    } catch (error) {
+      logger.debug({ pairAddress: pair.pairAddress, error }, 'CoinGecko metadata enrichment failed');
       return pair;
     }
   }

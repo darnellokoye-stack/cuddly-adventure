@@ -14,6 +14,7 @@ export class PairDiscovery {
       dex: registry.recognize(input.dexId),
       baseToken: input.baseToken.address,
       quoteToken: input.quoteToken.address,
+      chain: input.chainId ?? 'base',
       liquidity: input.liquidityUsd ?? input.liquidity,
       volume24h: input.volumeUsd,
       priceUsd: input.priceUsd,

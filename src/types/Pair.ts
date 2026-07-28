@@ -6,6 +6,7 @@ export interface Pair {
   dex: string;
   baseToken: string;
   quoteToken: string;
+  chain: string;
   liquidity: number;
   volume24h: number;
   priceUsd: number;

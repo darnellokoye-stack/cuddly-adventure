@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Pair } from '../types/Pair.js';
 import { PairFilter } from './PairFilter.js';
-import { SUPPORTED_DEXS } from '../config/constants.js';
+import { BASE_CHAIN, SUPPORTED_DEXS } from '../config/constants.js';
 
 const ethereumAddressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
 
@@ -27,7 +27,7 @@ export class ValidationFilter implements PairFilter {
       return false;
     }
 
-    if (pair.chain.toLowerCase() !== 'base') {
+    if (pair.chain.toLowerCase() !== BASE_CHAIN) {
       return false;
     }
 

@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { CacheProvider } from './CacheProvider.js';
 import { CachePayload } from '../types/Cache.js';
+import { logger } from '../utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDirectory = path.join(__dirname, '../../data');
@@ -20,6 +21,7 @@ export class FileCache implements CacheProvider {
       const payload = JSON.parse(raw) as CachePayload<T>;
       return payload.data;
     } catch (error) {
+      logger.debug({ filePath, error }, 'Cache read failed, returning null');
       return null;
     }
   }
