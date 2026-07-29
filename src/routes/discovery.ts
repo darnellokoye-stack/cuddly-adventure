@@ -56,6 +56,26 @@ router.get('/metrics', async (_req: Request, res: Response, next: NextFunction) 
   }
 });
 
+// GET /delta - Latest delta snapshot
+router.get('/delta', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const delta = await discoveryService.getDelta();
+    res.json(delta ?? {});
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /opportunities - Latest opportunity analysis
+router.get('/opportunities', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const opportunities = await discoveryService.getOpportunities();
+    res.json(opportunities);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /pairs/filtered - Filtered and paginated pairs
 router.get('/pairs/filtered', async (req: Request, res: Response, next: NextFunction) => {
   try {

@@ -1,0 +1,26 @@
+version: '3.9'
+services:
+  discovery:
+    build: .
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      EVENT_STREAM_PORT: 4100
+      CACHE_PROVIDER: redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_TTL_SECONDS: 3600
+      CACHE_NAMESPACE: base-market-intel
+      LOG_LEVEL: info
+    ports:
+      - 4000:4000
+      - 4100:4100
+    depends_on:
+      - redis
+  redis:
+    image: redis:8-alpine
+    restart: always
+    command: ["redis-server", "--save", "\"\"", "--appendonly", "no"]
+    ports:
+      - 6379:6379

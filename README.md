@@ -8,30 +8,17 @@ A production-ready standalone token discovery microservice for the Base blockcha
 
 ## Features
 
-- Discover Base trading pairs from DexScreener
-- Fallback to CoinGecko when primary API fails
-- Modular discovery pipeline with filters and ranking
-- File-based cache with pluggable cache provider abstraction
-- REST endpoints for tokens, pairs, stats, and refresh
-- Library exports for embedding into other applications
-- Validation with Zod
-- Structured logging with Pino
-- Scheduled refresh every 10 minutes
-- Fully tested with Vitest and Supertest
-
-## Architecture
-
+ - Job producers for additional queues (`src/queues/JobProducers.ts`)
+ - Worker runner (`src/workers/index.ts`)
 - `src/api` contains HTTP clients and API providers
 - `src/discovery` contains discovery orchestration and helper classes
-- `src/filters` contains pair and token validation filters
-- `src/ranking` computes discovery scores
-- `src/cache` manages caching abstraction and persistence
-- `src/services` exposes business operations to routers and library consumers
-- `src/routes` contains Express route definitions with validation
-- `src/utils` includes reusable helpers and error types
-- `src/config` centralizes runtime configuration
 
-## Installation
+Worker run examples:
+
+```bash
+# Run all workers (requires Redis)
+node -e "(async()=>{const stop=(await import('./dist/workers/index.js')).startAllWorkers();process.on('SIGINT',async()=>{(await stop)();process.exit(0)})})()"
+```
 
 ```bash
 npm install

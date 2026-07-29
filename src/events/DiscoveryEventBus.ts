@@ -32,13 +32,20 @@ export class DiscoveryEventBus extends EventEmitter {
   /**
    * Emit an event.
    */
-  emit(event: AnyDiscoveryEvent): void {
+  emit(event: AnyDiscoveryEvent): boolean;
+  emit(eventName: string | symbol, ...args: unknown[]): boolean;
+  emit(eventName: string | symbol | AnyDiscoveryEvent, ...args: unknown[]): boolean {
+    if (typeof eventName === 'string' || typeof eventName === 'symbol') {
+      return super.emit(eventName, ...args);
+    }
+
+    const event = eventName as AnyDiscoveryEvent;
     logger.trace(
       { eventType: event.type, timestamp: event.timestamp },
       'Event emitted'
     );
     super.emit(event.type, event);
-    super.emit('*', event);
+    return super.emit('*', event);
   }
 
   /**

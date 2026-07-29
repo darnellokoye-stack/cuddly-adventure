@@ -1,6 +1,7 @@
 import { CacheProvider } from './CacheProvider.js';
 import { CachePayload } from '../types/Cache.js';
 import { logger } from '../utils/logger.js';
+import { publishCacheInvalidation } from '../utils/redisPubSub.js';
 
 /**
  * Manages cache assets for discovery data.
@@ -16,16 +17,19 @@ export class CacheManager {
   async savePairs(pairs: unknown[]): Promise<void> {
     logger.info({ count: pairs.length }, 'Writing pairs cache');
     await this.provider.write('pairs', pairs);
+    await publishCacheInvalidation('pairs');
   }
 
   async saveStats(stats: unknown): Promise<void> {
     logger.info('Writing stats cache');
     await this.provider.write('stats', stats);
+    await publishCacheInvalidation('stats');
   }
 
   async saveLastUpdate(timestamp: string): Promise<void> {
     logger.info({ timestamp }, 'Writing last update cache');
     await this.provider.write('lastUpdate', { timestamp });
+    await publishCacheInvalidation('lastUpdate');
   }
 
   async loadTokens(): Promise<unknown[] | null> {

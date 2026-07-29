@@ -1,4 +1,3 @@
-import { Pair } from '../types/Pair.js';
 
 /**
  * Metrics for calculating Market Opportunity Score.

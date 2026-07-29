@@ -1,13 +1,12 @@
 import { Router } from 'express';
-import { DiscoveryService } from '../services/DiscoveryService.js';
+import { enqueueDiscoveryRefresh } from '../queues/DiscoveryQueue.js';
 
 const router = Router();
-const discoveryService = new DiscoveryService();
 
-router.post('/', async (req, res, next) => {
+router.post('/', async (_req, res, next) => {
   try {
-    const payload = await discoveryService.refresh();
-    res.status(202).json({ message: 'Discovery refresh triggered', payload });
+    const jobId = await enqueueDiscoveryRefresh();
+    res.status(202).json({ message: 'Discovery refresh queued', jobId });
   } catch (error) {
     next(error);
   }

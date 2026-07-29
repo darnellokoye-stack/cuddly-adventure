@@ -9,4 +9,6 @@ export interface DiscoveryMetrics {
   discoveredTokens: number;
   providerStats: ProviderStats[];
   eventCounts: Record<DiscoveryEventType, number>;
+  opportunityCount?: number;
+  deltaCount?: number;
 }

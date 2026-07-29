@@ -14,7 +14,8 @@ export enum DiscoveryEventType {
   HOLDER_GROWTH = 'HOLDER_GROWTH',
   SCORE_CHANGED = 'SCORE_CHANGED',
   SECURITY_WARNING = 'SECURITY_WARNING',
-  PROVIDER_FAILURE = 'PROVIDER_FAILURE'
+  PROVIDER_FAILURE = 'PROVIDER_FAILURE',
+  MARKET_ALERT = 'MARKET_ALERT'
 }
 
 /**
@@ -137,6 +138,19 @@ export interface ProviderFailureEvent extends DiscoveryEvent {
 }
 
 /**
+ * Event: Market-alert summary from delta/opportunity analysis.
+ */
+export interface MarketAlertEvent extends DiscoveryEvent {
+  type: DiscoveryEventType.MARKET_ALERT;
+  data: {
+    title: string;
+    severity: 'low' | 'medium' | 'high';
+    message: string;
+    source: string;
+  };
+}
+
+/**
  * Union of all events.
  */
 export type AnyDiscoveryEvent =
@@ -148,4 +162,5 @@ export type AnyDiscoveryEvent =
   | HolderGrowthEvent
   | ScoreChangedEvent
   | SecurityWarningEvent
-  | ProviderFailureEvent;
+  | ProviderFailureEvent
+  | MarketAlertEvent;

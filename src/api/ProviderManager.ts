@@ -1,6 +1,6 @@
-import { BaseProvider, NormalizedResponse } from './BaseProvider.js';
-import { ProviderRegistry } from './ProviderRegistry.js';
-import { logger } from '../../utils/logger.js';
+import { BaseProvider, NormalizedResponse } from './providers/BaseProvider.js';
+import { ProviderRegistry } from './providers/ProviderRegistry.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Provider statistics.
@@ -34,6 +34,7 @@ export class ProviderManager {
   private healthCheckIntervalMs: number;
   private maxRetries: number;
   private timeoutMs: number;
+  private healthCheckTimer?: NodeJS.Timeout;
   private lastHealthCheck = new Map<string, number>();
 
   constructor(registry: ProviderRegistry, options: ProviderManagerOptions = {}) {
@@ -41,6 +42,8 @@ export class ProviderManager {
     this.healthCheckIntervalMs = options.healthCheckIntervalMs ?? 300000; // 5 minutes
     this.maxRetries = options.maxRetries ?? 2;
     this.timeoutMs = options.timeoutMs ?? 15000;
+
+    this.startHealthPolling();
 
     // Initialize stats for all providers
     for (const provider of this.registry.getAll()) {
@@ -152,6 +155,25 @@ export class ProviderManager {
     await Promise.allSettled(checks);
   }
 
+  stopHealthPolling(): void {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = undefined;
+      logger.info('Provider health polling stopped');
+    }
+  }
+
+  private startHealthPolling(): void {
+    this.healthCheckTimer = setInterval(async () => {
+      try {
+        await this.checkAllHealth();
+      } catch (error) {
+        logger.warn({ error }, 'Provider health polling failed');
+      }
+    }, this.healthCheckIntervalMs);
+    logger.info({ intervalMs: this.healthCheckIntervalMs }, 'Provider health polling started');
+  }
+
   /**
    * Get statistics for a provider.
    */
@@ -234,6 +256,7 @@ export class ProviderManager {
     if (!stats) return;
 
     stats.failureCount += 1;
+    stats.healthy = false;
     stats.lastError = error instanceof Error ? error.message : String(error);
     stats.lastChecked = new Date().toISOString();
   }

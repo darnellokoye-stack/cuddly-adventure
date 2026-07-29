@@ -1,6 +1,8 @@
 import { DiscoveryEngine, DiscoveryPayload } from '../discovery/DiscoveryEngine.js';
 import { logger } from '../utils/logger.js';
 import { DiscoveryMetrics } from '../types/Metrics.js';
+import { DeltaSnapshot } from '../types/Delta.js';
+import { MarketOpportunity } from '../types/Opportunity.js';
 
 /**
  * Service responsible for discovery orchestration and cached fallback.
@@ -52,6 +54,14 @@ export class DiscoveryService {
 
   async getMetrics(): Promise<DiscoveryMetrics> {
     return this.engine.getMetrics();
+  }
+
+  async getDelta(): Promise<DeltaSnapshot | undefined> {
+    return this.engine.getLatestDelta();
+  }
+
+  async getOpportunities(): Promise<MarketOpportunity[]> {
+    return this.engine.getOpportunities();
   }
 
   async getToken(address: string) {

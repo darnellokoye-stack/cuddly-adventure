@@ -148,7 +148,7 @@ describe('API Pagination and Filtering', () => {
         total: 0,
         page,
         limit,
-        pages: Math.ceil(Math.max(1, 0) / limit)
+        pages: Math.ceil(0 / limit)
       };
 
       expect(response.items).toHaveLength(0);
